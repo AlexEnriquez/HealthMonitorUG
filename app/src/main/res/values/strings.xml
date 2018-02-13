@@ -271,7 +271,7 @@
     <string name="text_tipo_asma">Tipo Asma:</string>
     <string name="text_tipo_diabetes">Tipo Diabetes:</string>
     <string name="text_estcivil">Estado Civil:</string> <!-- CAMBIO AJOB-->
-    <string name="text_telefono">Número Celular:</string> <!-- CAMBIO AJOB-->
+    <string name="text_telefono">Celular:</string> <!-- CAMBIO AJOB-->
     <string name="text_pais">País:</string> <!-- CAMBIO AJOB-->
     <string name="text_logout">¿Está seguro que desea cerrar sesión?</string>
     <!--fin perfil-->
@@ -539,6 +539,13 @@
     <string-array name="sexo">
         <item>Masculino</item>
         <item>Femenino</item>
+    </string-array>
+
+    <string-array name="diabetesTypes">
+        <item>Tipo 1</item>
+        <item>Tipo 2</item>
+        <item>Gestacional</item>
+        <item>Sin diabetes</item>
     </string-array>
 
     <string-array name="estado_civil">

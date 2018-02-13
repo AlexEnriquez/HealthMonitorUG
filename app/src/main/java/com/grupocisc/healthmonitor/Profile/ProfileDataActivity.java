@@ -1,53 +1,62 @@
 package com.grupocisc.healthmonitor.Profile;
 
-import android.annotation.SuppressLint;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
+import android.app.ProgressDialog;
 import android.content.Intent;
-import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.CardView;
+import android.util.Log;
 import android.view.MenuItem;
-import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.TextView;
 import android.widget.Spinner;
-import android.widget.ArrayAdapter;
-import android.widget.AdapterView;
-import android.widget.Toast;
+import android.widget.TextView;
 
-import com.grupocisc.healthmonitor.Home.activities.MainActivity;
+import com.grupocisc.healthmonitor.HealthMonitorApplicattion;
 import com.grupocisc.healthmonitor.R;
-import com.grupocisc.healthmonitor.Utils.SharedPreferencesManager;
 import com.grupocisc.healthmonitor.Utils.Utils;
-import com.grupocisc.healthmonitor.login.activities.LoginAccountActivity;
+import com.grupocisc.healthmonitor.entities.IProfileData;
+import com.grupocisc.healthmonitor.entities.ProfileData;
 import com.grupocisc.healthmonitor.login.activities.LoginBackPassword;
 import com.squareup.picasso.Picasso;
 
+import butterknife.BindView;
+import butterknife.ButterKnife;
+import butterknife.OnClick;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+
 
 public class ProfileDataActivity extends AppCompatActivity {
-    TextView txt_name;
-    TextView txt_last_name;
-    EditText txt_email;
-    Spinner txt_sexo;
-    TextView txt_fecha;
-    EditText txt_altura;
-    TextView txt_peso;
-    //TextView txt_tipo_diabetes;
-    CheckBox chk_tipo_asma;
-    Spinner txt_estcivil;
-    EditText txt_telefono;
-    TextView txt_pais;
-    private CardView card_change_pass;
-    private CardView card_update_data;
-    public String Nombre = "";
-    public String Apellido = "";
+
+    static final String TAG = "ProfileDataActivity";
+    public ProgressDialog Dialog;
+
+    @BindView(R.id.txt_name) TextView txt_name;
+    @BindView(R.id.txt_last_name) TextView txt_last_name;
+    @BindView(R.id.txt_email) EditText txt_email;
+    @BindView(R.id.txt_sexo) Spinner txt_sexo;
+    @BindView(R.id.spinnerDiabetes) Spinner spinnerDiabetes;
+    @BindView(R.id.txt_fecha) TextView txt_fecha;
+    @BindView(R.id.txt_altura) EditText txt_altura;
+    @BindView(R.id.txt_peso) TextView txt_peso;
+    @BindView(R.id.chkAsma) CheckBox chk_tipo_asma;
+    @BindView(R.id.txt_estcivil) Spinner txt_estcivil;
+    @BindView(R.id.txt_telefono) EditText txt_telefono;
+    @BindView(R.id.txt_pais) TextView txt_pais;
+    @BindView(R.id.editionBtn) ImageView editionButton;
+    @BindView(R.id.card_change_pass) CardView card_change_pass;
+    @BindView(R.id.card_update_data) CardView card_update_data;
+
+    boolean _isEnabled=false;
+    public String name = "";
+    public String _lastName = "";
     public String Email = "";
-    public String Anio = "";
+    public String year = "";
     public String Peso = "";
     public String TipoDiabetesP = "";
     public String TipoAsma = "";
@@ -58,54 +67,49 @@ public class ProfileDataActivity extends AppCompatActivity {
     public String Pais = "";
     private String enviaSexo = "";
     private ImageView user_avatar;
-    String  tdiabetes="";
+
+    Call<ProfileData> _updateRequest;
+    ProfileData _profileData;
+
+    //String  tdiabetes="";
     int idTipoDiabetes=0;
-    int tieneAsma=0;
-    Spinner spinnerDiabetes;
-    String[] tipoDiabetes = new String[]{
+    Boolean hasAsthma;
+    //Spinner spinnerDiabetes;
+    /*String[] diabetesType = new String[]{
             "Tipo 1",
             "Tipo 2",
             "Gestacional",
             "Sin diabetes"
-    };
+    };*/
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.profile_datata_activity);
 
+        ButterKnife.bind(this);
+
+        Dialog = new ProgressDialog(this);
+
         Utils.SetStyleToolbarLogo(this);
         //setea el color de la imagen
         ImageView perfil_user = (ImageView) findViewById(R.id.img_icon);
         perfil_user.setColorFilter(perfil_user.getContext().getResources().getColor(R.color.btn_login), PorterDuff.Mode.SRC_ATOP);
 
-        card_change_pass = (CardView) findViewById(R.id.card_change_pass);
-        card_update_data = (CardView) findViewById(R.id.card_update_data);
-
-        txt_name = (TextView) findViewById(R.id.txt_name);
-        txt_last_name = (TextView) findViewById(R.id.txt_last_name);
-        txt_email = (EditText) findViewById(R.id.txt_email);
-        txt_sexo = (Spinner) findViewById(R.id.txt_sexo);
-        txt_fecha = (TextView) findViewById(R.id.txt_fecha);
-        txt_altura = (EditText) findViewById(R.id.txt_altura);
-        txt_peso = (TextView) findViewById(R.id.txt_peso);
-        //txt_tipo_diabetes = (TextView) findViewById(R.id.txt_tipo_diabetes);
-        chk_tipo_asma = (CheckBox) findViewById(R.id.chkAsma);
-        txt_estcivil = (Spinner) findViewById(R.id.txt_estcivil);
-        txt_telefono = (EditText) findViewById(R.id.txt_telefono);
-        txt_pais = (TextView) findViewById(R.id.txt_pais);
-        user_avatar = (ImageView) findViewById(R.id.user_avatar);
+        txt_sexo.setEnabled(_isEnabled);
+        txt_estcivil.setEnabled(_isEnabled);
+        spinnerDiabetes.setEnabled(_isEnabled);
 
 
         //OBTENER DATA DE PREFERENCIA
         if (Utils.getEmailFromPreference(this) != null)
             Email = Utils.getEmailFromPreference(this);
         if (Utils.getNombreFromPreference(this) != null)
-            Nombre = Utils.getNombreFromPreference(this);
+            name = Utils.getNombreFromPreference(this);
         if (Utils.getApellidoFromPreference(this) != null)
-            Apellido = Utils.getApellidoFromPreference(this);
+            _lastName = Utils.getApellidoFromPreference(this);
         if (Utils.getAnioFromPreference(this) != null)
-            Anio = Utils.getAnioFromPreference(this);
+            year = Utils.getAnioFromPreference(this);
         if (Utils.getPesoFromPreference(this) != null)
             Peso = Utils.getPesoFromPreference(this);
         if (Utils.getTipoDiabetesFromPreference(this) != null)
@@ -129,12 +133,12 @@ public class ProfileDataActivity extends AppCompatActivity {
 
         if (Utils.getEmailFromPreference(this) != null) {
             //setear texto del layout
-            String valores = Anio.toString().substring(2, 3);
-            if (valores.equals("/")) {
-                txt_fecha.setText(Anio);
+            String dateValues = year.substring(2, 3);
+            if (dateValues.equals("/")) {
+                txt_fecha.setText(year);
             } else {
-                String fecha = Anio.toString().substring(8, 10) + "/" + Anio.toString().substring(5, 7) + "/" + Anio.toString().substring(0, 4);
-                txt_fecha.setText(fecha);
+                String date = year.substring(8, 10) + "/" + year.substring(5, 7) + "/" + year.substring(0, 4);
+                txt_fecha.setText(date);
             }
 
             String sex = Sexo;
@@ -145,19 +149,18 @@ public class ProfileDataActivity extends AppCompatActivity {
                 Sexo = "FEMENINO";
                 txt_sexo.setSelection(1);
             }
-            txt_name.setText(Nombre);
-            txt_last_name.setText(Apellido);
+            txt_name.setText(name);
+            txt_last_name.setText(_lastName);
             txt_email.setText(Email);
-            //txt_sexo.setText(Sexo);
             txt_altura.setText(Altura);
             txt_peso.setText(Peso + " kg");
-            //txt_tipo_diabetes.setText(TipoDiabetesP);
             chk_tipo_asma.setChecked(false);
-            if(TipoAsma.equals("true"))
+
+            if(TipoAsma.equals("1") || TipoAsma.equals("2"))
                 chk_tipo_asma.setChecked(true);
+            else
+                chk_tipo_asma.setChecked(false);
 
-
-            //txt_estcivil.setText(EstCivil);
             if(EstCivil.equals("Soltero")){
                 txt_estcivil.setSelection(0);
             }else if(EstCivil.equals("Casado")){
@@ -173,21 +176,7 @@ public class ProfileDataActivity extends AppCompatActivity {
             txt_pais.setText(Pais);
         }
 
-        setSpinner();
-
-        card_change_pass.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                callChangePass();
-            }
-        });
-
-        card_update_data.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                actualizaDatos();
-            }
-        });
+        //setSpinner();
 
         if(TipoDiabetesP.equals("11")){
             spinnerDiabetes.setSelection(0);
@@ -198,12 +187,6 @@ public class ProfileDataActivity extends AppCompatActivity {
         }else if(TipoDiabetesP.equals("14")){
             spinnerDiabetes.setSelection(3);
         }
-
-
-        this.txt_sexo.setEnabled(false);
-        this.txt_estcivil.setEnabled(false);
-        this.spinnerDiabetes.setEnabled(false);
-        this.chk_tipo_asma.setEnabled(false);
     }
 
     //se ejecuta al seleccionar el icon back del toolbar
@@ -214,18 +197,19 @@ public class ProfileDataActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
+    @OnClick(R.id.card_change_pass)
     public void callChangePass() {
         Intent i = new Intent(ProfileDataActivity.this, LoginBackPassword.class);
         startActivity(i);
     }
 
-    public void setSpinner(){
-        spinnerDiabetes = (Spinner) findViewById(R.id.spinnerDiabetes);
-        ArrayAdapter<String> spinnerArrayAdapterDiabetes = new ArrayAdapter<String>(this, R.layout.custom_textview_to_spinner,tipoDiabetes );
+    /*public void setSpinner(){
+        ArrayAdapter<String> spinnerArrayAdapterDiabetes = new ArrayAdapter<String>(this, R.layout.custom_textview_to_spinner, diabetesType);
         spinnerArrayAdapterDiabetes.setDropDownViewResource(R.layout.custom_textview_to_spinner);
         spinnerDiabetes.setAdapter(spinnerArrayAdapterDiabetes);
-    }
+    }*/
 
+    @OnClick(R.id.card_update_data)
     public void actualizaDatos(){
         String msg = "";
         if(this.txt_email.getText().toString().trim().isEmpty()){
@@ -240,7 +224,32 @@ public class ProfileDataActivity extends AppCompatActivity {
         }else{
             getIdSexo();
             getIdTipoDiabetes();
-            getTieneAsma();
+            getHasAsthma();
+
+            IProfileData _data = HealthMonitorApplicattion.getApplication().getRetrofitAdapter().create(IProfileData.class);
+            _updateRequest = _data.updateProfileData(new ProfileData(Email,enviaSexo,Float.parseFloat(Altura), idTipoDiabetes, hasAsthma,EstCivil,Telefono));
+            _updateRequest.enqueue(new Callback<ProfileData>() {
+                @Override
+                public void onResponse(Call<ProfileData> call, Response<ProfileData> response) {
+                    if(response.isSuccessful()){
+                        _profileData =null;
+                        _profileData = response.body();
+                        postEnviaData();
+                    }else {
+                        showLayoutDialog();
+                        Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo));
+                        Log.e(TAG, "Error en la petición call_3");
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<ProfileData> call, Throwable t) {
+                    showLayoutDialog();
+                    Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo) + " o revise su conexión a internet");
+                    t.printStackTrace();
+                    Log.e(TAG, "Error en la petición onFailure");
+                }
+            });
 
             //Variables para enviarla al sevidor
             /*
@@ -252,8 +261,13 @@ public class ProfileDataActivity extends AppCompatActivity {
             Estado civil --> txt_estcivil.getSelectedItem().toString().trim()
             Telefono --> txt_telefono.getText().toString().trim()
             */
-            Utils.generarSweetAlertDialogError(ProfileDataActivity.this, "HealthMonitorUG", "Datos actualizados");
+            //Utils.generarAlerta(ProfileDataActivity.this, "HealthMonitorUG", "Datos actualizados");
         }
+    }
+
+    private void showLayoutDialog() {
+        if (Dialog != null)
+            Dialog.dismiss();
     }
 
     private void getIdTipoDiabetes(){
@@ -278,26 +292,49 @@ public class ProfileDataActivity extends AppCompatActivity {
         }
     }
 
-    private void getTieneAsma(){
+    private void getHasAsthma(){
         if(this.chk_tipo_asma.isChecked()){
-            tieneAsma = 1;
+            hasAsthma = true;
         }else{
-            tieneAsma = 0;
+            hasAsthma = false;
         }
     }
 
-    @SuppressLint("ResourceAsColor")
-    public void habilitaCampos(View view){
-        this.txt_email.setEnabled(true);
-        this.txt_altura.setEnabled(true);
-        this.txt_telefono.setEnabled(true);
-        this.txt_sexo.setEnabled(true);
-        this.txt_estcivil.setEnabled(true);
-        this.spinnerDiabetes.setEnabled(true);
-        this.chk_tipo_asma.setEnabled(true);
+    //@SuppressLint("ResourceAsColor")
 
-        this.txt_email.setBackgroundResource(R.color.silver_fondo);
-        this.txt_altura.setBackgroundResource(R.color.silver_fondo);
-        this.txt_telefono.setBackgroundResource(R.color.silver_fondo);
+    @OnClick(R.id.editionBtn)
+    public void enableFields(){
+        _isEnabled = !_isEnabled;
+        //txt_email.setEnabled(_isEnabled);
+        txt_altura.setEnabled(_isEnabled);
+        txt_telefono.setEnabled(_isEnabled);
+        //txt_sexo.setEnabled(_isEnabled);
+        txt_estcivil.setEnabled(_isEnabled);
+        spinnerDiabetes.setEnabled(_isEnabled);
+        chk_tipo_asma.setEnabled(_isEnabled);
+
+        if(_isEnabled){
+            //txt_email.setBackgroundResource(R.color.silver_fondo);
+            txt_altura.setBackgroundResource(R.color.silver_fondo);
+            txt_telefono.setBackgroundResource(R.color.silver_fondo);
+        }
+        else {
+            //txt_email.setBackgroundResource(R.color.transparent);
+            txt_altura.setBackgroundResource(R.color.transparent);
+            txt_telefono.setBackgroundResource(R.color.transparent);
+        }
+    }
+
+    public void postEnviaData() {
+        showLayoutDialog();
+        if (_profileData != null) {
+            /*if (mDesvDoctor.getIdCodResult() == 0) {
+                //DeletePreferencesCallMainActivity();
+            } else {
+                Utils.generarAlerta(DoctorRegistre.this, getString(R.string.txt_atencion), mDesvDoctor.getResultDescription());
+            }*/
+        } else {
+            Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo));
+        }
     }
 }
