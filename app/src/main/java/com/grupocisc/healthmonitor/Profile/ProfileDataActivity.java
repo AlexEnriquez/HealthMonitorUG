@@ -1,27 +1,38 @@
 package com.grupocisc.healthmonitor.Profile;
 
+import android.app.DatePickerDialog;
 import android.app.ProgressDialog;
 import android.content.Intent;
 import android.graphics.PorterDuff;
+import android.icu.util.Calendar;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.CardView;
 import android.util.Log;
 import android.view.MenuItem;
-import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
+import android.widget.DatePicker;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.grupocisc.healthmonitor.HealthMonitorApplicattion;
+import com.grupocisc.healthmonitor.Home.activities.MainActivity;
 import com.grupocisc.healthmonitor.R;
+import com.grupocisc.healthmonitor.Services.AssistantService;
+import com.grupocisc.healthmonitor.Services.BarometerService;
+import com.grupocisc.healthmonitor.Utils.NotificationHelper;
+import com.grupocisc.healthmonitor.Utils.SharedPreferencesManager;
 import com.grupocisc.healthmonitor.Utils.Utils;
 import com.grupocisc.healthmonitor.entities.IProfileData;
 import com.grupocisc.healthmonitor.entities.ProfileData;
+import com.grupocisc.healthmonitor.entities.UpdateProfileResult;
 import com.grupocisc.healthmonitor.login.activities.LoginBackPassword;
 import com.squareup.picasso.Picasso;
+
+import java.sql.SQLException;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -36,8 +47,8 @@ public class ProfileDataActivity extends AppCompatActivity {
     static final String TAG = "ProfileDataActivity";
     public ProgressDialog Dialog;
 
-    @BindView(R.id.txt_name) TextView txt_name;
-    @BindView(R.id.txt_last_name) TextView txt_last_name;
+    @BindView(R.id.et_name) EditText txt_name;
+    @BindView(R.id.et_last_name) EditText txt_last_name;
     @BindView(R.id.txt_email) EditText txt_email;
     @BindView(R.id.txt_sexo) Spinner txt_sexo;
     @BindView(R.id.spinnerDiabetes) Spinner spinnerDiabetes;
@@ -51,6 +62,12 @@ public class ProfileDataActivity extends AppCompatActivity {
     @BindView(R.id.editionBtn) ImageView editionButton;
     @BindView(R.id.card_change_pass) CardView card_change_pass;
     @BindView(R.id.card_update_data) CardView card_update_data;
+
+    private static final int DATE_DIALOG_ID = 1;
+    private int _year;
+    private int month;
+    private int day;
+    private String currentDate;
 
     boolean _isEnabled=false;
     public String name = "";
@@ -68,12 +85,12 @@ public class ProfileDataActivity extends AppCompatActivity {
     private String enviaSexo = "";
     private ImageView user_avatar;
 
-    Call<ProfileData> _updateRequest;
-    ProfileData _profileData;
+    Call<UpdateProfileResult> _updateRequest;
+    UpdateProfileResult updateProfileResult;
 
     //String  tdiabetes="";
     int idTipoDiabetes=0;
-    Boolean hasAsthma;
+    Integer hasAsthma;
     //Spinner spinnerDiabetes;
     /*String[] diabetesType = new String[]{
             "Tipo 1",
@@ -99,6 +116,7 @@ public class ProfileDataActivity extends AppCompatActivity {
         txt_sexo.setEnabled(_isEnabled);
         txt_estcivil.setEnabled(_isEnabled);
         spinnerDiabetes.setEnabled(_isEnabled);
+        card_change_pass.setEnabled(_isEnabled);
 
 
         //OBTENER DATA DE PREFERENCIA
@@ -137,7 +155,11 @@ public class ProfileDataActivity extends AppCompatActivity {
             if (dateValues.equals("/")) {
                 txt_fecha.setText(year);
             } else {
-                String date = year.substring(8, 10) + "/" + year.substring(5, 7) + "/" + year.substring(0, 4);
+                //String date = year.substring(8, 10) + "/" + year.substring(5, 7) + "/" + year.substring(0, 4);
+                String date = year;
+                _year = Integer.parseInt(year.substring(0, 4));
+                month = Integer.parseInt(year.substring(5, 7))-1;
+                day = Integer.parseInt(year.substring(8, 10));
                 txt_fecha.setText(date);
             }
 
@@ -187,6 +209,12 @@ public class ProfileDataActivity extends AppCompatActivity {
         }else if(TipoDiabetesP.equals("14")){
             spinnerDiabetes.setSelection(3);
         }
+
+        txt_fecha.setOnClickListener(view -> {
+            if(_isEnabled){
+                showDialog(DATE_DIALOG_ID);
+            }
+        });
     }
 
     //se ejecuta al seleccionar el icon back del toolbar
@@ -202,12 +230,6 @@ public class ProfileDataActivity extends AppCompatActivity {
         Intent i = new Intent(ProfileDataActivity.this, LoginBackPassword.class);
         startActivity(i);
     }
-
-    /*public void setSpinner(){
-        ArrayAdapter<String> spinnerArrayAdapterDiabetes = new ArrayAdapter<String>(this, R.layout.custom_textview_to_spinner, diabetesType);
-        spinnerArrayAdapterDiabetes.setDropDownViewResource(R.layout.custom_textview_to_spinner);
-        spinnerDiabetes.setAdapter(spinnerArrayAdapterDiabetes);
-    }*/
 
     @OnClick(R.id.card_update_data)
     public void actualizaDatos(){
@@ -225,44 +247,72 @@ public class ProfileDataActivity extends AppCompatActivity {
             getIdSexo();
             getIdTipoDiabetes();
             getHasAsthma();
+            getCivilState();
 
-            IProfileData _data = HealthMonitorApplicattion.getApplication().getRetrofitAdapter().create(IProfileData.class);
-            _updateRequest = _data.updateProfileData(new ProfileData(Email,enviaSexo,Float.parseFloat(Altura), idTipoDiabetes, hasAsthma,EstCivil,Telefono));
-            _updateRequest.enqueue(new Callback<ProfileData>() {
-                @Override
-                public void onResponse(Call<ProfileData> call, Response<ProfileData> response) {
-                    if(response.isSuccessful()){
-                        _profileData =null;
-                        _profileData = response.body();
-                        postEnviaData();
-                    }else {
-                        showLayoutDialog();
-                        Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo));
-                        Log.e(TAG, "Error en la petición call_3");
+            if(_isEnabled){
+                IProfileData _data = HealthMonitorApplicattion.getApplication().getRetrofitAdapter().create(IProfileData.class);
+                ProfileData profileData = new ProfileData(txt_email.getText().toString(),txt_name.getText().toString(),txt_last_name.getText().toString(),txt_fecha.getText().toString().replace('/','-'),enviaSexo,EstCivil,txt_telefono.getText().toString(),getAge(),1,Float.parseFloat(txt_altura.getText().toString()), idTipoDiabetes, hasAsthma);
+                _updateRequest = _data.updateProfileData(profileData);
+                _updateRequest.enqueue(new Callback<UpdateProfileResult>() {
+                    @Override
+                    public void onResponse(Call<UpdateProfileResult> call, Response<UpdateProfileResult> response) {
+                        if(response.isSuccessful()){
+                            updateProfileResult =null;
+                            updateProfileResult = response.body();
+                            postEnviaData();
+                        }else {
+                            showLayoutDialog();
+                            Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo));
+                            Log.e(TAG, "Error en la petición actualizacion de datos");
+                        }
                     }
-                }
 
-                @Override
-                public void onFailure(Call<ProfileData> call, Throwable t) {
-                    showLayoutDialog();
-                    Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo) + " o revise su conexión a internet");
-                    t.printStackTrace();
-                    Log.e(TAG, "Error en la petición onFailure");
-                }
-            });
-
-            //Variables para enviarla al sevidor
-            /*
-            Email --> txt_email.getText().toString().trim()
-            Sexo --> enviaSexo
-            Altura --> txt_altura.getText().toString().trim()
-            Tipo de diabetes --> idTipoDiabetes
-            Asma --> tieneAsma
-            Estado civil --> txt_estcivil.getSelectedItem().toString().trim()
-            Telefono --> txt_telefono.getText().toString().trim()
-            */
-            //Utils.generarAlerta(ProfileDataActivity.this, "HealthMonitorUG", "Datos actualizados");
+                    @Override
+                    public void onFailure(Call<UpdateProfileResult> call, Throwable t) {
+                        showLayoutDialog();
+                        Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo) + " o revise su conexión a internet");
+                        t.printStackTrace();
+                        Log.e(TAG, "Error en la petición onFailure");
+                    }
+                });
+            }
+            else {
+                Utils.generarAlerta(this,"No hay campos que han sido editados","");
+            }
         }
+    }
+
+    int getAge() {
+        java.util.Calendar birthday = java.util.Calendar.getInstance();
+        birthday.set(_year, month, day);
+        //Date currentDate = new Date();
+
+        java.util.Calendar today = java.util.Calendar.getInstance();
+        java.util.Calendar birthDate = java.util.Calendar.getInstance();
+        birthDate.setTime(birthday.getTime());
+
+        if (birthDate.after(today)) {
+            throw new IllegalArgumentException("You don't exist yet");
+        }
+        int todayYear = today.get(java.util.Calendar.YEAR);
+        int birthDateYear = birthDate.get(java.util.Calendar.YEAR);
+        int todayDayOfYear = today.get(java.util.Calendar.DAY_OF_YEAR);
+        int birthDateDayOfYear = birthDate.get(java.util.Calendar.DAY_OF_YEAR);
+        int todayMonth = today.get(java.util.Calendar.MONTH);
+        int birthDateMonth = birthDate.get(java.util.Calendar.MONTH);
+        int todayDayOfMonth = today.get(java.util.Calendar.DAY_OF_MONTH);
+        int birthDateDayOfMonth = birthDate.get(java.util.Calendar.DAY_OF_MONTH);
+        int age = todayYear - birthDateYear;
+
+        // If birth date is greater than todays date (after 2 days adjustment of leap year) then decrement age one year
+        if ((birthDateDayOfYear - todayDayOfYear > 3) || (birthDateMonth > todayMonth)){
+            age--;
+
+            // If birth date and todays date are of same month and birth day of month is greater than todays day of month then decrement age
+        } else if ((birthDateMonth == todayMonth) && (birthDateDayOfMonth > todayDayOfMonth)){
+            age--;
+        }
+        return age;
     }
 
     private void showLayoutDialog() {
@@ -284,6 +334,25 @@ public class ProfileDataActivity extends AppCompatActivity {
         }
     }
 
+
+    void getCivilState(){
+        if(txt_estcivil.getSelectedItemPosition()==0){
+            EstCivil = "Soltero";
+        }
+        else if(txt_estcivil.getSelectedItemPosition()==1){
+            EstCivil = "Casado";
+        }
+        else if(txt_estcivil.getSelectedItemPosition()==2){
+            EstCivil = "Viudo";
+        }
+        else if(txt_estcivil.getSelectedItemPosition()==3){
+            EstCivil = "Divorciado";
+        }
+        else {
+            EstCivil = "En Unión de Hechos";
+        }
+    }
+
     private void getIdSexo(){
         if(this.txt_sexo.getSelectedItemPosition()==0){
             enviaSexo ="M";
@@ -294,9 +363,9 @@ public class ProfileDataActivity extends AppCompatActivity {
 
     private void getHasAsthma(){
         if(this.chk_tipo_asma.isChecked()){
-            hasAsthma = true;
+            hasAsthma = 2;
         }else{
-            hasAsthma = false;
+            hasAsthma = null;
         }
     }
 
@@ -305,36 +374,145 @@ public class ProfileDataActivity extends AppCompatActivity {
     @OnClick(R.id.editionBtn)
     public void enableFields(){
         _isEnabled = !_isEnabled;
+        card_change_pass.setEnabled(_isEnabled);
+        txt_name.setEnabled(_isEnabled);
+        txt_last_name.setEnabled(_isEnabled);
         //txt_email.setEnabled(_isEnabled);
         txt_altura.setEnabled(_isEnabled);
         txt_telefono.setEnabled(_isEnabled);
-        //txt_sexo.setEnabled(_isEnabled);
         txt_estcivil.setEnabled(_isEnabled);
         spinnerDiabetes.setEnabled(_isEnabled);
         chk_tipo_asma.setEnabled(_isEnabled);
 
         if(_isEnabled){
             //txt_email.setBackgroundResource(R.color.silver_fondo);
+            txt_name.setBackgroundResource(R.color.silver_fondo);
+            txt_last_name.setBackgroundResource(R.color.silver_fondo);
+            txt_fecha.setBackgroundResource(R.color.silver_fondo);
             txt_altura.setBackgroundResource(R.color.silver_fondo);
             txt_telefono.setBackgroundResource(R.color.silver_fondo);
         }
         else {
             //txt_email.setBackgroundResource(R.color.transparent);
+            txt_name.setBackgroundResource(R.color.transparent);
+            txt_last_name.setBackgroundResource(R.color.transparent);
+            txt_fecha.setBackgroundResource(R.color.transparent);
             txt_altura.setBackgroundResource(R.color.transparent);
             txt_telefono.setBackgroundResource(R.color.transparent);
         }
     }
 
+//    void ShowDatePickerDialog(){
+//        new DatePickerDialog(this).show();
+//    }
+
+    @Override
+    protected android.app.Dialog onCreateDialog(int id) {
+        switch (id) {
+            case DATE_DIALOG_ID:
+                return new DatePickerDialog(this, myDateSetListener, _year, month, day);
+        }
+        return null;
+    }
+
+    private void updateDisplay() {
+
+        //currentDate = year.substring(0, 4)+ "-" + year.substring(5, 7)+ "-" +year.substring(8, 10);
+        currentDate = new StringBuilder().append(_year).append("-")
+                .append(String.format("%02d", month + 1)).append("-").append(String.format("%02d",day)).toString();
+
+        Log.i("DATE", currentDate);
+    }
+
+    DatePickerDialog.OnDateSetListener myDateSetListener = new DatePickerDialog.OnDateSetListener() {
+
+        @Override
+        public void onDateSet(DatePicker datePicker, int i, int j, int k) {
+
+            _year = i;
+            month = j;
+            day = k;
+            updateDisplay();
+            txt_fecha.setText(currentDate);
+        }
+    };
+
     public void postEnviaData() {
         showLayoutDialog();
-        if (_profileData != null) {
-            /*if (mDesvDoctor.getIdCodResult() == 0) {
-                //DeletePreferencesCallMainActivity();
-            } else {
-                Utils.generarAlerta(DoctorRegistre.this, getString(R.string.txt_atencion), mDesvDoctor.getResultDescription());
-            }*/
+        if (updateProfileResult != null) {
+            if(updateProfileResult.getRespuesta()){
+
+                generateCerrar();
+                Toast.makeText(MainActivity.getInstance(),"Los datos se han actualizado correctamente, debe volver a iniciar sesión", Toast.LENGTH_LONG).show();
+
+            }
+            else {
+                Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo));
+            }
         } else {
             Utils.generarAlerta(ProfileDataActivity.this, getString(R.string.txt_atencion), getString(R.string.text_error_metodo));
         }
+    }
+
+    public void generateCerrar() {
+
+        //eliminar preferencias
+        DeletePreferencesCallMainActivity();
+        AssistantService.stopService(getApplicationContext());
+        NotificationHelper.Current.cancelAllNotifications(getApplicationContext());
+        BarometerService.Current.stopService(getApplicationContext());
+
+    }
+    private void DeletePreferencesCallMainActivity() {
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_EMAIL);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_NOMBRE);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_APELLIDO);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_PICTURE_URI);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_ANIO);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_PESO);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_ALTURA);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_SEXO);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_ESTCIVIL);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_TELEFONO);
+        SharedPreferencesManager.setValor(this, Utils.PREFERENCIA_USER, null, Utils.KEY_PAIS);
+
+        eliminarDatosDB();
+
+        //volver a crear el main
+        Intent intent = new Intent(this, MainActivity.class);  // envia al main
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP); //para borrar pila de actividades
+        startActivity(intent);
+    }
+
+    public void eliminarDatosDB() {
+        try {
+            //GLUCOSA
+            Utils.DeleterowsIGlucose(HealthMonitorApplicattion.getApplication().getGlucoseDao());
+            //PICK FLOW ASMA
+            Utils.DeleterowsIAsthma(HealthMonitorApplicattion.getApplication().getAsthmaDao());
+            //INSULINA
+            Utils.DeleterowsEInsulin(HealthMonitorApplicattion.getApplication().getInsulinDao());
+            //PESO
+            Utils.DeleterowsIWeight(HealthMonitorApplicattion.getApplication().getWeightDao());
+            //PULSO-PRESION
+            Utils.DeleteIPulseDB(HealthMonitorApplicattion.getApplication().getPulseDao());
+            //ESTADO ANIMO
+            Utils.DeleterowsIState(HealthMonitorApplicattion.getApplication().getStateDao());
+            //COLESTEROL complementario
+            Utils.DeleterowsIColesterol(HealthMonitorApplicattion.getApplication().getColesterolDao());
+            //HB1 CETONAS complementario
+            Utils.DeleterowsIHba1c(HealthMonitorApplicattion.getApplication().getHba1cDao());
+            //mis doctores
+            Utils.DeleterowsAllDoctors(HealthMonitorApplicattion.getApplication().getDoctorDao());
+            //Medicinas y Alarmas
+            Utils.DeleterowsAllMedicinesUser(HealthMonitorApplicattion.getApplication().getMedicineUserDao());
+            Utils.DeleterowsAllMedicinesControl(HealthMonitorApplicattion.getApplication().getRegisteredMedicinesDao());
+            Utils.DeleterowsAllMedicinesAlarm(HealthMonitorApplicattion.getApplication().getEAlarmDetailsDao());
+            Utils.DeleterowsAllMedicinesTake(HealthMonitorApplicattion.getApplication().getEAlarmTakeMedicineDao());
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
     }
 }
